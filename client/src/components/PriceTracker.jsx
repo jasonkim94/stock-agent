@@ -9,10 +9,20 @@ function PriceTracker({ onChartOpen, onAnalyzeOpen }) {
   const [error, setError] = useState(null);
   const [autoEnabled, setAutoEnabled] = useState(false);
   const [nextRefresh, setNextRefresh] = useState(null);
+  const [alertCodes, setAlertCodes] = useState(() => JSON.parse(localStorage.getItem('stock_alert_codes') || '[]'));
+  const [sentAlerts, setSentAlerts] = useState({});
   const timerRef = useRef(null);
   const countdownRef = useRef(null);
 
   const getWatchlist = () => JSON.parse(localStorage.getItem('stock_watchlist') || '[]');
+
+  const toggleAlert = (code) => {
+    setAlertCodes(prev => {
+      const next = prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code];
+      localStorage.setItem('stock_alert_codes', JSON.stringify(next));
+      return next;
+    });
+  };
 
   const fetchTracking = useCallback(async () => {
     const watchlist = getWatchlist();
@@ -70,6 +80,25 @@ function PriceTracker({ onChartOpen, onAnalyzeOpen }) {
     }, 1000);
     return () => clearInterval(countdownRef.current);
   }, [nextRefresh]);
+
+  // 매수/매도 의견인 종목에 대해 알림 메일 자동 발송
+  useEffect(() => {
+    if (!results?.analysis?.results) return;
+    const toSend = results.analysis.results.filter(
+      r => alertCodes.includes(r.code) && (r.action === '매수' || r.action === '매도') && !sentAlerts[r.code + '_' + r.action]
+    );
+    if (!toSend.length) return;
+    toSend.forEach(async (r) => {
+      try {
+        await axios.post('/api/send-alert', {
+          stock: { code: r.code, name: r.name, action: r.action, currentPrice: r.currentPrice, savedPrice: r.savedPrice, shortReason: r.shortReason, confidence: r.confidence, targetPrice: r.targetPrice, stopLoss: r.stopLoss },
+        });
+        setSentAlerts(prev => ({ ...prev, [r.code + '_' + r.action]: true }));
+      } catch (e) {
+        console.error('[Alert] 메일 발송 실패:', e.message);
+      }
+    });
+  }, [results, alertCodes, sentAlerts]);
 
   const watchlist = getWatchlist();
   const analysis = results?.analysis;
@@ -217,6 +246,21 @@ function PriceTracker({ onChartOpen, onAnalyzeOpen }) {
                     <summary>상세 분석 보기</summary>
                     <p className="tracker-detailed-reason">{r.detailedReason}</p>
                   </details>
+
+                  <div className="tracker-alert-toggle">
+                    <label className="alert-switch">
+                      <input
+                        type="checkbox"
+                        checked={alertCodes.includes(r.code)}
+                        onChange={() => toggleAlert(r.code)}
+                      />
+                      <span className="alert-slider" />
+                    </label>
+                    <span className="alert-label">📧 매수/매도 알림</span>
+                    {sentAlerts[r.code + '_' + r.action] && (r.action === '매수' || r.action === '매도') && (
+                      <span className="alert-sent-badge">✓ 발송됨</span>
+                    )}
+                  </div>
 
                   <div className="tracker-card-actions">
                     <button className="tracker-btn" onClick={() => onChartOpen?.(r.code, r.name)}>📊 차트</button>

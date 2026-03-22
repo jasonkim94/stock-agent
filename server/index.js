@@ -6,9 +6,115 @@ const iconv = require('iconv-lite');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
+const nodemailer = require('nodemailer');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const fs = require('fs');
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ─── Gmail 인증 시스템 ────────────────────────────────────────────────────────
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+const ALLOWED_EMAILS = ['jykim94@gmail.com'];
+const pendingCodes = new Map();
+
+function createTransporter() {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+  });
+}
+
+app.post('/api/auth/send-code', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: '유효한 이메일을 입력해주세요.' });
+    }
+    if (!ALLOWED_EMAILS.includes(email.toLowerCase())) {
+      return res.status(403).json({ error: '접근이 허용되지 않은 이메일입니다.' });
+    }
+    const existing = pendingCodes.get(email);
+    if (existing && existing.expiresAt - Date.now() > 4 * 60 * 1000) {
+      return res.status(429).json({ error: '잠시 후 다시 시도해주세요.' });
+    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    pendingCodes.set(email, { code, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 });
+
+    const transporter = createTransporter();
+    await transporter.sendMail({
+      from: `"InsightLedger AI" <${process.env.GMAIL_USER}>`,
+      to: email,
+      subject: '[InsightLedger AI] 로그인 인증코드',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f5f5f9;border-radius:12px;">
+          <h2 style="color:#7c3aed;margin:0 0 8px;">InsightLedger AI</h2>
+          <p style="color:#6b7280;margin:0 0 24px;">로그인 인증코드입니다.</p>
+          <div style="background:#fff;border-radius:8px;padding:24px;text-align:center;border:1px solid #e4e4ec;">
+            <p style="font-size:32px;font-weight:700;letter-spacing:8px;color:#1e1e2f;margin:0;">${code}</p>
+          </div>
+          <p style="color:#6b7280;font-size:13px;margin:16px 0 0;">이 코드는 5분간 유효합니다.</p>
+        </div>
+      `,
+    });
+    console.log(`[Auth] 인증코드 발송: ${email}`);
+    res.json({ success: true, message: '인증코드가 발송되었습니다.' });
+  } catch (e) {
+    console.error('[Auth] 이메일 발송 실패:', e.message);
+    res.status(500).json({ error: '이메일 발송에 실패했습니다. Gmail 설정을 확인해주세요.' });
+  }
+});
+
+app.post('/api/auth/verify-code', (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ error: '이메일과 인증코드를 입력해주세요.' });
+  const pending = pendingCodes.get(email);
+  if (!pending) return res.status(400).json({ error: '인증코드를 먼저 요청해주세요.' });
+  if (Date.now() > pending.expiresAt) {
+    pendingCodes.delete(email);
+    return res.status(400).json({ error: '인증코드가 만료되었습니다.' });
+  }
+  pending.attempts += 1;
+  if (pending.attempts > 5) {
+    pendingCodes.delete(email);
+    return res.status(429).json({ error: '시도 횟수 초과. 새 코드를 요청해주세요.' });
+  }
+  if (pending.code !== String(code).trim()) {
+    return res.status(400).json({ error: `인증코드 불일치 (${5 - pending.attempts}회 남음)` });
+  }
+  pendingCodes.delete(email);
+  const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
+  console.log(`[Auth] 로그인 성공: ${email}`);
+  res.json({ success: true, token, email });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: '인증 필요' });
+  try {
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    res.json({ email: decoded.email });
+  } catch {
+    res.status(401).json({ error: '토큰 만료' });
+  }
+});
+
+// 인증 미들웨어 — 이후 모든 /api/* 보호
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth')) return next();
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '로그인이 필요합니다.' });
+  }
+  try {
+    req.user = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    next();
+  } catch {
+    res.status(401).json({ error: '인증 만료. 다시 로그인해주세요.' });
+  }
+});
 
 // ─── Groq API 큐 + 재시도 ─────────────────────────────────────────────────────
 let groqQueue = Promise.resolve();
@@ -960,6 +1066,54 @@ results의 순서는 urgency가 긴급한 것부터 정렬. confidence는 0~100 
   } catch (e) {
     console.error('[/api/track-stocks]', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── 매수/매도 알림 메일 발송 ──────────────────────────────────────────────────
+app.post('/api/send-alert', async (req, res) => {
+  try {
+    const { stock } = req.body;
+    if (!stock || !stock.code || !stock.action) {
+      return res.status(400).json({ error: '종목 정보가 필요합니다.' });
+    }
+    const userEmail = req.user.email;
+    const actionColor = stock.action === '매수' ? '#3b82f6' : '#ef4444';
+    const actionEmoji = stock.action === '매수' ? '📈' : '📉';
+
+    const transporter = createTransporter();
+    await transporter.sendMail({
+      from: `"InsightLedger AI" <${process.env.GMAIL_USER}>`,
+      to: userEmail,
+      subject: `[InsightLedger AI] ${actionEmoji} ${stock.name}(${stock.code}) ${stock.action} 신호`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#f5f5f9;border-radius:12px;">
+          <h2 style="color:#7c3aed;margin:0 0 8px;">InsightLedger AI</h2>
+          <p style="color:#6b7280;margin:0 0 20px;">시세 추종 알림</p>
+          <div style="background:#fff;border-radius:8px;padding:24px;border:1px solid #e4e4ec;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+              <h3 style="margin:0;font-size:18px;">${stock.name} (${stock.code})</h3>
+              <span style="background:${actionColor};color:#fff;padding:4px 14px;border-radius:20px;font-weight:700;font-size:14px;">${stock.action}</span>
+            </div>
+            <table style="width:100%;font-size:14px;border-collapse:collapse;">
+              <tr><td style="padding:6px 0;color:#6b7280;">현재가</td><td style="padding:6px 0;font-weight:600;text-align:right;">${stock.currentPrice}원</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;">저장가</td><td style="padding:6px 0;text-align:right;">${stock.savedPrice}원</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;">확신도</td><td style="padding:6px 0;text-align:right;">${stock.confidence}%</td></tr>
+              ${stock.targetPrice ? `<tr><td style="padding:6px 0;color:#6b7280;">목표가</td><td style="padding:6px 0;text-align:right;">${stock.targetPrice}</td></tr>` : ''}
+              ${stock.stopLoss ? `<tr><td style="padding:6px 0;color:#6b7280;">손절가</td><td style="padding:6px 0;text-align:right;">${stock.stopLoss}</td></tr>` : ''}
+            </table>
+            <div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:6px;">
+              <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">💡 ${stock.shortReason}</p>
+            </div>
+          </div>
+          <p style="color:#9ca3af;font-size:12px;margin:16px 0 0;text-align:center;">이 메일은 시세 추종 알림 설정에 의해 자동 발송되었습니다.</p>
+        </div>
+      `,
+    });
+    console.log(`[Alert] ${stock.action} 알림 발송: ${stock.name}(${stock.code}) → ${userEmail}`);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Alert] 알림 메일 발송 실패:', e.message);
+    res.status(500).json({ error: '알림 메일 발송 실패' });
   }
 });
 

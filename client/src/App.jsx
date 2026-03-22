@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import MarketIndex from './components/MarketIndex';
 import StockTable from './components/StockTable';
@@ -11,6 +11,7 @@ import StockDetail from './components/StockDetail';
 import StockAnalysis from './components/StockAnalysis';
 import PriceTracker from './components/PriceTracker';
 import HelpGuide from './components/HelpGuide';
+import LoginPage from './components/LoginPage';
 
 function App() {
   const [data, setData] = useState(null);
@@ -23,6 +24,42 @@ function App() {
   const [analysis, setAnalysis] = useState(null); // rec 객체 전체
   const [showHelp, setShowHelp] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [authEmail, setAuthEmail] = useState(localStorage.getItem('auth_email'));
+
+  // axios 인터셉터: 토큰 자동 첨부 + 401 자동 로그아웃
+  useEffect(() => {
+    const reqId = axios.interceptors.request.use(config => {
+      const token = localStorage.getItem('auth_token');
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+      return config;
+    });
+    const resId = axios.interceptors.response.use(
+      res => res,
+      err => {
+        if (err.response?.status === 401 && !err.config?.url?.includes('/api/auth/')) {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_email');
+          setAuthEmail(null);
+        }
+        return Promise.reject(err);
+      }
+    );
+    return () => {
+      axios.interceptors.request.eject(reqId);
+      axios.interceptors.response.eject(resId);
+    };
+  }, []);
+
+  const handleLogin = (email) => setAuthEmail(email);
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_email');
+    setAuthEmail(null);
+  };
+
+  if (!authEmail) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   const openChart   = (code, name) => setChart({ code, name });
   const closeChart  = () => setChart(null);
@@ -102,6 +139,8 @@ function App() {
           </button>
         </div>
         <div className="topnav-right">
+          <span className="topnav-email">{authEmail}</span>
+          <button className="topnav-link" onClick={handleLogout}>로그아웃</button>
           {lastUpdated && <span className="topnav-updated">업데이트: {lastUpdated}</span>}
           <button className="topnav-help" onClick={() => setShowHelp(true)} title="도움말">?</button>
         </div>
