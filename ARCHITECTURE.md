@@ -14,8 +14,8 @@ graph TB
 
     subgraph Server["⚙️ 서버 (Express.js · Port 5001)"]
         API["REST API\n/api/*"]
-        Cache["인메모리 캐시\n(TTL: 3분)"]
-        GroqQueue["Groq 직렬 큐\n(Rate Limit 방지)"]
+        Cache["인메모리 캐시\n(/api/recommend TTL: 3분\n/api/sectors TTL: 30분)"]
+        GroqQueue["Groq 직렬 큐\n(Rate Limit 방지 · 최대 3회 재시도)"]
     end
 
     subgraph External["🌐 외부 서비스"]
@@ -99,8 +99,8 @@ flowchart LR
     subgraph Routes["Express 라우트"]
         R1["GET /api/market"]
         R2["GET /api/stocks"]
-        R3["GET /api/recommend\n(캐시 TTL 3분)"]
-        R4["GET /api/sectors\n(캐시 TTL 30분)"]
+        R3["GET /api/recommend\n(캐시 TTL 3분: 시세 빈번 변동 반영)"]
+        R4["GET /api/sectors\n(캐시 TTL 30분: 업종 목록 변동 적음)"]
         R5["GET /api/sector?no=&name="]
         R6["GET /api/search?q="]
         R7["GET /api/chart?code=&period="]
@@ -200,7 +200,7 @@ sequenceDiagram
     U->>C: 업종 선택 후 "분석" 클릭
     C->>S: GET /api/sector?no=&name=
     S->>N: 업종별 종목 스크래핑
-    N-->>S: 종목 리스트 (최대 15개)
+    N-->>S: 종목 리스트 (상위 15개 · server/index.js slice(0,15))
     S->>G: 섹터 AI 분석 요청
     G-->>S: 분석 결과 JSON (outlook, TOP3 추천)
     S-->>C: 분석 결과 반환
@@ -221,7 +221,7 @@ sequenceDiagram
     U->>C: "시세 체크" 클릭 (또는 10분 자동 갱신)
     C->>LS: stock_watchlist 조회
     LS-->>C: 관심 종목 목록 [{code, name, price, strategy}]
-    C->>S: POST /api/track-stocks (최대 20종목)
+    C->>S: POST /api/track-stocks (최대 20종목 · server/index.js slice(0,20))
     par 종목별 병렬 수집
         S->>N: /api/stock/{code}/basic (현재가)
         S->>N: /api/stock/{code}/integration (PER, 52주 등)
@@ -248,6 +248,7 @@ erDiagram
         string marketSummary "시장 요약"
         array recommendations "추천 종목 배열 (최대 5)"
     }
+    %% App.jsx line 71: history.slice(0, 50) — 최대 50건 보관
 
     RECOMMENDATION {
         number rank "순위"
