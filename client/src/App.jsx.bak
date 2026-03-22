@@ -1,0 +1,166 @@
+import { useState } from 'react';
+import axios from 'axios';
+import MarketIndex from './components/MarketIndex';
+import StockTable from './components/StockTable';
+import AIRecommend from './components/AIRecommend';
+import SectorAnalysis from './components/SectorAnalysis';
+import StockChart from './components/StockChart';
+import HistoryPage from './components/HistoryPage';
+import StockDetail from './components/StockDetail';
+import StockAnalysis from './components/StockAnalysis';
+import HelpGuide from './components/HelpGuide';
+
+function App() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [tab, setTab] = useState('main');       // 'main' | 'history'
+  const [chart, setChart] = useState(null);       // { code, name }
+  const [detail, setDetail] = useState(null);     // { code, name }
+  const [analysis, setAnalysis] = useState(null); // rec 객체 전체
+  const [showHelp, setShowHelp] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  const openChart   = (code, name) => setChart({ code, name });
+  const closeChart  = () => setChart(null);
+  const openDetail  = (code, name) => setDetail({ code, name });
+  const closeDetail = () => setDetail(null);
+  const openAnalysis  = (rec) => setAnalysis(rec);
+  const closeAnalysis = () => setAnalysis(null);
+
+  const analyze = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data: result } = await axios.get('/api/recommend');
+      setData(result);
+      setLastUpdated(new Date().toLocaleTimeString('ko-KR'));
+    } catch (e) {
+      setError(e.response?.data?.error || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveAnalysis = () => {
+    if (!data?.recommendation) return;
+    const history = JSON.parse(localStorage.getItem('stock_ai_history') || '[]');
+    const entry = {
+      id: new Date().toISOString(),
+      savedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+      dataDate: data.dataDate,
+      sentiment: data.recommendation.sentiment,
+      sentimentKo: data.recommendation.sentimentKo,
+      marketSummary: data.recommendation.marketSummary,
+      recommendations: (data.recommendation.recommendations || []).map(r => ({
+        rank: r.rank,
+        name: r.name,
+        code: r.code,
+        currentPrice: r.currentPrice,
+        changeRate: r.changeRate,
+        targetReturn: r.targetReturn,
+        riskLevel: r.riskLevel,
+        strategy: r.strategy,
+        reason: r.reason,
+      })),
+    };
+    history.unshift(entry);
+    localStorage.setItem('stock_ai_history', JSON.stringify(history.slice(0, 50)));
+    setSaveMsg('✅ 저장됨!');
+    setTimeout(() => setSaveMsg(''), 2500);
+  };
+
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="header-top">
+          <h1>📈 AI 주식 추천 Agent</h1>
+          {lastUpdated && <span className="last-updated">마지막 업데이트: {lastUpdated}</span>}
+          <button className="btn-help" onClick={() => setShowHelp(true)} title="도움말">❓ 도움말</button>
+        </div>
+        <p className="subtitle">KOSPI · KOSDAQ 실시간 데이터를 AI가 분석하여 매수 추천 종목을 제시합니다</p>
+
+        <div className="nav-tabs">
+          <button
+            className={`nav-tab ${tab === 'main' ? 'active' : ''}`}
+            onClick={() => setTab('main')}
+          >
+            📊 메인
+          </button>
+          <button
+            className={`nav-tab ${tab === 'history' ? 'active' : ''}`}
+            onClick={() => setTab('history')}
+          >
+            📁 이력
+          </button>
+        </div>
+
+        {tab === 'main' && (
+          <div className="header-actions">
+            <button onClick={analyze} disabled={loading} className="btn-analyze">
+              {loading ? <><span className="spin">⟳</span> AI 분석 중…</> : '🤖 AI 분석 시작'}
+            </button>
+            {data && (
+              <button onClick={saveAnalysis} className="btn-save">
+                {saveMsg || '💾 저장'}
+              </button>
+            )}
+          </div>
+        )}
+      </header>
+
+      {tab === 'history' && (
+        <HistoryPage onDetailOpen={openDetail} onChartOpen={openChart} />
+      )}
+
+      {tab === 'main' && (
+        <>
+          {error && <div className="error-box">❌ 오류: {error}</div>}
+
+          {loading && (
+            <div className="loading-box">
+              <div className="loader" />
+              <p>📡 네이버 금융 데이터 수집 중...</p>
+              <p>🧠 Groq AI가 종목을 분석하고 있습니다. (약 5~10초 소요)</p>
+            </div>
+          )}
+
+          {data && !loading && (
+            <div className="content">
+              <MarketIndex market={data.market} dataDate={data.dataDate} />
+              <div className="stock-grid">
+                <StockTable title="🔵 KOSPI 상승 종목" stocks={data.stocks?.kospi || []} color="blue" onChartOpen={openChart} />
+                <StockTable title="🟣 KOSDAQ 상승 종목" stocks={data.stocks?.kosdaq || []} color="purple" onChartOpen={openChart} />
+              </div>
+              <AIRecommend recommendation={data.recommendation} onChartOpen={openChart} onAnalyzeOpen={openAnalysis} />
+            </div>
+          )}
+
+          {!data && !loading && (
+            <div className="welcome-box">
+              <div className="welcome-icon">📊</div>
+              <h2>AI 주식 추천을 시작해보세요</h2>
+              <ul>
+                <li>🔎 네이버 금융에서 KOSPI·KOSDAQ 실시간 시세 수집</li>
+                <li>🧠 Groq AI가 시장 분석 및 종목 추천</li>
+                <li>📋 매수 추천 TOP 5 + 상세 재무 지표</li>
+                <li>💾 분석 결과 저장 및 트렌드 이력 관리</li>
+              </ul>
+              <p className="disclaimer">⚠️ 본 서비스는 참고용이며, 투자 손실에 대한 책임을 지지 않습니다.</p>
+            </div>
+          )}
+
+          <SectorAnalysis onChartOpen={openChart} />
+        </>
+      )}
+
+      {chart    && <StockChart  code={chart.code}  name={chart.name}  onClose={closeChart} />}
+      {detail   && <StockDetail code={detail.code} name={detail.name} onClose={closeDetail} onChartOpen={openChart} />}
+      {analysis && <StockAnalysis rec={analysis} onClose={closeAnalysis} onChartOpen={openChart} onSave={() => setSaveMsg('⭐ 저장됨!')} />}
+      {showHelp && <HelpGuide onClose={() => setShowHelp(false)} />}
+    </div>
+  );
+}
+
+export default App;
