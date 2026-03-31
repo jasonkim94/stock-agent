@@ -212,7 +212,7 @@ function StockDetail({ code, name, onClose, onChartOpen }) {
                 </span>
               )}
               {info.changeRate != null && (
-                <span className={parseFloat(info.changeRate) >= 0 ? 'text-green' : 'text-red'}>
+                <span className={parseFloat(info.changeRate) >= 0 ? 'text-red' : 'text-blue'}>
                   {parseFloat(info.changeRate) >= 0 ? '+' : ''}{info.changeRate}%
                 </span>
               )}

@@ -148,7 +148,7 @@ function SectorAnalysis({ onChartOpen, onAnalyzeOpen }) {
                         )}
                       </td>
                       <td className="price">{Number(s.price).toLocaleString()}원</td>
-                      <td className={`rate ${rate > 0 ? 'text-green' : rate < 0 ? 'text-red' : ''}`}>
+                      <td className={`rate ${rate > 0 ? 'text-red' : rate < 0 ? 'text-blue' : ''}`}>
                         {s.changeRate}
                       </td>
                     </tr>
@@ -183,7 +183,7 @@ function SectorAnalysis({ onChartOpen, onAnalyzeOpen }) {
                     {upside != null && (
                       <span className="rec-target">
                         목표가 {targetNum.toLocaleString()}원{' '}
-                        <span className={parseFloat(upside) >= 0 ? 'text-green' : 'text-red'}>
+                        <span className={parseFloat(upside) >= 0 ? 'text-red' : 'text-blue'}>
                           ({parseFloat(upside) >= 0 ? '+' : ''}{upside}%)
                         </span>
                       </span>

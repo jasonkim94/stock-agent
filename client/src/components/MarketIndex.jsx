@@ -10,7 +10,7 @@ function MarketIndex({ market, dataDate }) {
       <div className={`index-card ${isUp ? 'up' : isDown ? 'down' : ''}`} key={name}>
         <div className="index-name">{name}</div>
         <div className="index-price">{price}</div>
-        <div className={`index-change ${isUp ? 'text-green' : isDown ? 'text-red' : ''}`}>
+        <div className={`index-change ${isUp ? 'text-red' : isDown ? 'text-blue' : ''}`}>
           {sign}{ratio.toFixed(2)}%
         </div>
       </div>

@@ -7,6 +7,7 @@ function AIRecommend({ recommendation: r, onChartOpen, onAnalyzeOpen }) {
 
   const riskColor = { '낮음': 'green', '중간': 'yellow', '높음': 'red' };
   const strategyIcon = { '단기': '⚡', '중기': '📅', '장기': '🏦' };
+  const categoryIcon = { '우량주': '🏢', '성장주': '🚀', '가치주': '💎' };
 
   return (
     <section className="section ai-section">
@@ -39,10 +40,15 @@ function AIRecommend({ recommendation: r, onChartOpen, onAnalyzeOpen }) {
               </div>
               <div className="rec-price">
                 {!isNaN(priceNum) && <span>{priceNum.toLocaleString()}원</span>}
-                <span className="text-green">{rec.changeRate}</span>
+                <span className={rec.changeRate?.toString().startsWith('-') ? 'text-blue' : 'text-red'}>{rec.changeRate}</span>
               </div>
               <p className="rec-reason">{rec.reason}</p>
               <div className="rec-tags">
+                {rec.category && (
+                  <span className="tag tag-category">
+                    {categoryIcon[rec.category] || '📊'} {rec.category}
+                  </span>
+                )}
                 <span className={`tag risk-${riskColor[rec.riskLevel] || 'yellow'}`}>
                   리스크: {rec.riskLevel}
                 </span>
@@ -64,6 +70,14 @@ function AIRecommend({ recommendation: r, onChartOpen, onAnalyzeOpen }) {
           );
         })}
       </div>
+
+      {/* 섹터 인사이트 */}
+      {r.sectorInsight && (
+        <div className="sector-insight">
+          <h3>🏭 섹터 인사이트</h3>
+          <p>{r.sectorInsight}</p>
+        </div>
+      )}
 
       {/* 주의사항 */}
       {r.cautions?.length > 0 && (

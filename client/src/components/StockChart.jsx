@@ -45,8 +45,8 @@ const CustomTooltip = ({ active, payload, label, period }) => {
     <div className="chart-tooltip">
       <p className="tooltip-date">{formatDateFull(d?.date, period)}</p>
       {d?.open  != null && <p>시가: <span>{Number(d.open ).toLocaleString()}원</span></p>}
-      {d?.high  != null && <p>고가: <span className="text-green">{Number(d.high ).toLocaleString()}원</span></p>}
-      {d?.low   != null && <p>저가: <span className="text-red">{Number(d.low  ).toLocaleString()}원</span></p>}
+      {d?.high  != null && <p>고가: <span className="text-red">{Number(d.high ).toLocaleString()}원</span></p>}
+      {d?.low   != null && <p>저가: <span className="text-blue">{Number(d.low  ).toLocaleString()}원</span></p>}
       {d?.close != null && <p>종가: <span style={{fontWeight:700}}>{Number(d.close).toLocaleString()}원</span></p>}
       {d?.volume != null && <p style={{color:'var(--subtext)',fontSize:'0.78rem'}}>거래량: {Number(d.volume).toLocaleString()}</p>}
     </div>
@@ -185,7 +185,7 @@ function StockChart({ code, name, onClose }) {
                 return (
                   <>
                     <span>현재가 <strong>{Number(last.close).toLocaleString()}원</strong></span>
-                    <span className={diff >= 0 ? 'text-green' : 'text-red'}>
+                    <span className={diff >= 0 ? 'text-red' : 'text-blue'}>
                       {diff >= 0 ? '▲' : '▼'} {Math.abs(diff).toLocaleString()}원 ({diff >= 0 ? '+' : ''}{pct}%)
                     </span>
                     <span className="summary-period">{PERIODS.find(p=>p.key===period)?.label}봉 {data.length}개</span>

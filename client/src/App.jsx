@@ -25,6 +25,24 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [authEmail, setAuthEmail] = useState(localStorage.getItem('auth_email'));
+  const [authChecking, setAuthChecking] = useState(!!localStorage.getItem('auth_token'));
+
+  // 앱 시작 시 저장된 토큰으로 자동 로그인 검증
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) { setAuthChecking(false); return; }
+    axios.get('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then(({ data }) => {
+        localStorage.setItem('auth_email', data.email);
+        setAuthEmail(data.email);
+      })
+      .catch(() => {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_email');
+        setAuthEmail(null);
+      })
+      .finally(() => setAuthChecking(false));
+  }, []);
 
   // axios 인터셉터: 토큰 자동 첨부 + 401 자동 로그아웃
   useEffect(() => {
@@ -56,6 +74,17 @@ function App() {
     localStorage.removeItem('auth_email');
     setAuthEmail(null);
   };
+
+  if (authChecking) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
+        <div style={{ textAlign: 'center', color: 'var(--subtext)' }}>
+          <div className="loader" />
+          <p style={{ marginTop: 12 }}>로그인 확인 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!authEmail) {
     return <LoginPage onLogin={handleLogin} />;

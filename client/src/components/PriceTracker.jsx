@@ -1,7 +1,59 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { ResponsiveContainer, AreaChart, Area, YAxis, Tooltip } from 'recharts';
 
 const INTERVAL_MS = 10 * 60 * 1000; // 10분
+
+function MiniChart({ code }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(false);
+
+  useEffect(() => {
+    if (!code) return;
+    axios.get(`/api/chart?code=${code}&period=day`)
+      .then(({ data: raw }) => {
+        const recent = raw.slice(-30).map(c => ({
+          date: String(c.date).slice(4, 6) + '.' + String(c.date).slice(6, 8),
+          close: c.close,
+        }));
+        setData(recent);
+      })
+      .catch(() => setErr(true));
+  }, [code]);
+
+  if (err || !data) return null;
+  if (data.length < 2) return null;
+
+  const prices = data.map(d => d.close);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const isUp = data[data.length - 1].close >= data[0].close;
+  const color = isUp ? '#22c55e' : '#ef4444';
+
+  return (
+    <div className="mini-chart-wrap">
+      <ResponsiveContainer width="100%" height={80}>
+        <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={`grad-${code}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.3} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
+          <YAxis domain={[min * 0.998, max * 1.002]} hide />
+          <Tooltip
+            contentStyle={{ fontSize: '0.72rem', padding: '4px 8px', borderRadius: 6 }}
+            formatter={(v) => [Number(v).toLocaleString() + '원', '종가']}
+            labelFormatter={(l) => l}
+          />
+          <Area type="monotone" dataKey="close" stroke={color} strokeWidth={1.5}
+            fill={`url(#grad-${code})`} dot={false} activeDot={{ r: 3 }} />
+        </AreaChart>
+      </ResponsiveContainer>
+      <div className="mini-chart-label">최근 30일</div>
+    </div>
+  );
+}
 
 function PriceTracker({ onChartOpen, onAnalyzeOpen }) {
   const [results, setResults] = useState(null);
@@ -40,6 +92,7 @@ function PriceTracker({ onChartOpen, onAnalyzeOpen }) {
           code: s.code,
           name: s.name,
           price: s.price,
+          buyDate: s.buyDate || '',
           strategy: s.strategy,
           reason: s.reason,
         })),
@@ -220,7 +273,7 @@ function PriceTracker({ onChartOpen, onAnalyzeOpen }) {
                       <span className="tracker-price-value">{Number(String(r.currentPrice).replace(/,/g, '')).toLocaleString()}원</span>
                     </div>
                     <div className="tracker-price-item">
-                      <span className="tracker-price-label">저장가</span>
+                      <span className="tracker-price-label">매수가</span>
                       <span className="tracker-price-value dim">{Number(String(r.savedPrice).replace(/,/g, '')).toLocaleString()}원</span>
                     </div>
                     {pnl !== null && (
@@ -239,6 +292,8 @@ function PriceTracker({ onChartOpen, onAnalyzeOpen }) {
                     {r.targetPrice && <span className="tracker-target">목표 {r.targetPrice}</span>}
                     {r.stopLoss && <span className="tracker-stoploss">손절 {r.stopLoss}</span>}
                   </div>
+
+                  <MiniChart code={r.code} />
 
                   <p className="tracker-short-reason">{r.shortReason}</p>
 

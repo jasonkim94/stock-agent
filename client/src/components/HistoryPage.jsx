@@ -111,7 +111,7 @@ function HistoryPage({ onDetailOpen, onChartOpen }) {
               <span key={i} className="history-chip">
                 #{rec.rank} {rec.name}
                 {rec.changeRate && (
-                  <span className={rec.changeRate.startsWith('+') ? 'text-green' : 'text-red'}>
+                  <span className={rec.changeRate.startsWith('+') ? 'text-red' : 'text-blue'}>
                     {' '}{rec.changeRate}
                   </span>
                 )}
@@ -141,7 +141,7 @@ function HistoryPage({ onDetailOpen, onChartOpen }) {
                       : ''}
                   </span>
                   {rec.changeRate && (
-                    <span className={rec.changeRate.startsWith('+') ? 'text-green' : 'text-red'}>
+                    <span className={rec.changeRate.startsWith('+') ? 'text-red' : 'text-blue'}>
                       {rec.changeRate}
                     </span>
                   )}
@@ -220,7 +220,7 @@ function HistoryPage({ onDetailOpen, onChartOpen }) {
                         : ''}
                     </span>
                     {a.changeRate && (
-                      <span className={a.changeRate.startsWith('+') ? 'text-green' : 'text-red'}>
+                      <span className={a.changeRate.startsWith('+') ? 'text-red' : 'text-blue'}>
                         {a.changeRate}
                       </span>
                     )}

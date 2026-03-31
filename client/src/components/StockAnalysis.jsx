@@ -57,6 +57,8 @@ function MetricRow({ m }) {
 function StockAnalysis({ rec, onClose, onChartOpen, onSave }) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [saved, setSaved] = useState(false);
+  const [customPrice, setCustomPrice] = useState('');
+  const [buyDate, setBuyDate] = useState(new Date().toISOString().slice(0, 10));
   const [finData, setFinData] = useState(null);
   const [finLoading, setFinLoading] = useState(false);
   const [finTab, setFinTab] = useState('annual'); // 'annual' | 'quarter'
@@ -143,11 +145,15 @@ function StockAnalysis({ rec, onClose, onChartOpen, onSave }) {
   const handleSave = () => {
     const watchlist = JSON.parse(localStorage.getItem('stock_watchlist') || '[]');
     if (watchlist.some(s => s.code === rec.code)) return;
+    const savePrice = customPrice && String(customPrice).trim()
+      ? String(customPrice).trim().replace(/[^0-9]/g, '')
+      : rec.currentPrice;
     watchlist.unshift({
       code: rec.code,
       name: rec.name,
       savedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
-      price: rec.currentPrice,
+      buyDate: buyDate,
+      price: savePrice,
       changeRate: rec.changeRate,
       strategy: rec.strategy,
       riskLevel: rec.riskLevel,
@@ -157,6 +163,13 @@ function StockAnalysis({ rec, onClose, onChartOpen, onSave }) {
     localStorage.setItem('stock_watchlist', JSON.stringify(watchlist.slice(0, 100)));
     setSaved(true);
     onSave?.();
+  };
+
+  const handleUnsave = () => {
+    const watchlist = JSON.parse(localStorage.getItem('stock_watchlist') || '[]');
+    const filtered = watchlist.filter(s => s.code !== rec.code);
+    localStorage.setItem('stock_watchlist', JSON.stringify(filtered));
+    setSaved(false);
   };
 
   const { loading, error, data } = state;
@@ -171,55 +184,88 @@ function StockAnalysis({ rec, onClose, onChartOpen, onSave }) {
 
         {/* ─── 헤더 ─── */}
         <div className="sa-header">
-          <div className="sa-header-info">
-            <div className="sa-title-row">
-              <span className="sa-name">{rec?.name}</span>
-              {rec?.code && <span className="detail-code">{rec.code}</span>}
-              {rec?.market && <span className="rec-market">{rec.market}</span>}
-            </div>
-            <div className="sa-price-row">
-              {priceNum && !isNaN(priceNum) && (
-                <span className="sa-price">{priceNum.toLocaleString()}원</span>
-              )}
-              {rec?.changeRate && (
-                <span className={rec.changeRate.toString().startsWith('-') ? 'text-red' : 'text-green'}>
-                  {rec.changeRate}
+          <div className="sa-header-top">
+            <div className="sa-header-info">
+              <div className="sa-title-row">
+                <span className="sa-name">{rec?.name}</span>
+                {rec?.code && <span className="detail-code">{rec.code}</span>}
+                {rec?.market && <span className="rec-market">{rec.market}</span>}
+              </div>
+              <div className="sa-price-row">
+                {priceNum && !isNaN(priceNum) && (
+                  <span className="sa-price">{priceNum.toLocaleString()}원</span>
+                )}
+                {rec?.changeRate && (
+                  <span className={rec.changeRate.toString().startsWith('-') ? 'text-blue' : 'text-red'}>
+                    {rec.changeRate}
+                  </span>
+                )}
+                <span className={`tag risk-${riskColor[rec?.riskLevel] || 'yellow'}`} style={{ marginLeft: 8 }}>
+                  리스크: {rec?.riskLevel}
                 </span>
-              )}
-              <span className={`tag risk-${riskColor[rec?.riskLevel] || 'yellow'}`} style={{ marginLeft: 8 }}>
-                리스크: {rec?.riskLevel}
-              </span>
-              <span className="tag" style={{ marginLeft: 4 }}>
-                {stratIcon[rec?.strategy] || '📈'} {rec?.strategy}
-              </span>
-              {rec?.targetReturn && (
-                <span className="tag text-green" style={{ marginLeft: 4 }}>
-                  목표: {rec.targetReturn}
+                <span className="tag" style={{ marginLeft: 4 }}>
+                  {stratIcon[rec?.strategy] || '📈'} {rec?.strategy}
                 </span>
-              )}
+                {rec?.targetReturn && (
+                  <span className="tag text-green" style={{ marginLeft: 4 }}>
+                    목표: {rec.targetReturn}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="sa-header-actions">
-            <button
-              className={`btn-sa-save ${saved ? 'saved' : ''}`}
-              onClick={handleSave}
-              disabled={saved}
-              title={saved ? '이미 저장됨' : '관심종목 저장'}
-            >
-              {saved ? '⭐ 저장됨' : '☆ 저장'}
-            </button>
-            {rec?.code && onChartOpen && (
+            <div className="sa-header-btns">
               <button
-                className="btn-chart-mini"
-                style={{ padding: '5px 10px', fontSize: '0.82rem' }}
-                onClick={() => { onChartOpen(rec.code, rec.name); onClose(); }}
-                title="차트 보기"
+                className={`btn-sa-save ${saved ? 'saved' : ''}`}
+                onClick={saved ? handleUnsave : handleSave}
+                title={saved ? '저장 취소' : '관심종목 저장'}
               >
-                📊 차트
+                {saved ? '⭐ 저장됨' : '☆ 저장'}
               </button>
-            )}
-            <button className="chart-close-btn" onClick={onClose}>✕</button>
+              {rec?.code && onChartOpen && (
+                <button
+                  className="btn-chart-mini"
+                  style={{ padding: '5px 10px', fontSize: '0.82rem' }}
+                  onClick={() => { onChartOpen(rec.code, rec.name); onClose(); }}
+                  title="차트 보기"
+                >
+                  📊 차트
+                </button>
+              )}
+              <button className="chart-close-btn" onClick={onClose}>✕</button>
+            </div>
           </div>
+          {!saved && (
+            <div className="sa-save-fields" onClick={e => e.stopPropagation()}>
+              <div className="sa-save-price">
+                <label className="sa-price-input-label" htmlFor={`price-${rec?.code}`}>매수가</label>
+                <input
+                  id={`price-${rec?.code}`}
+                  type="number"
+                  inputMode="numeric"
+                  className="sa-price-input"
+                  placeholder={rec?.currentPrice ? String(rec.currentPrice).replace(/,/g, '') : '기준가'}
+                  value={customPrice}
+                  onChange={e => setCustomPrice(e.target.value)}
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => { e.stopPropagation(); e.target.focus(); }}
+                  autoComplete="off"
+                />
+                <span className="sa-price-unit">원</span>
+              </div>
+              <div className="sa-save-date">
+                <label className="sa-price-input-label" htmlFor={`date-${rec?.code}`}>매수일</label>
+                <input
+                  id={`date-${rec?.code}`}
+                  type="date"
+                  className="sa-date-input"
+                  value={buyDate}
+                  onChange={e => setBuyDate(e.target.value)}
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => { e.stopPropagation(); e.target.focus(); }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ─── 로딩 ─── */}
@@ -248,27 +294,36 @@ function StockAnalysis({ rec, onClose, onChartOpen, onSave }) {
               </div>
             )}
 
-            {/* 주요 비즈니스 */}
-            {a.businessOverview && (
-              <div className="sa-section">
-                <h3 className="sa-section-title">🏢 주요 비즈니스</h3>
-                <p className="sa-body-text">{a.businessOverview}</p>
-              </div>
-            )}
-
-            {/* 기술 역량 */}
-            {a.technology && (
-              <div className="sa-section">
-                <h3 className="sa-section-title">⚙️ 핵심 기술 역량</h3>
-                <p className="sa-body-text">{a.technology}</p>
-              </div>
-            )}
-
-            {/* 시장 평가 */}
-            {a.marketPosition && (
-              <div className="sa-section">
-                <h3 className="sa-section-title">📡 시장에서의 평가</h3>
-                <p className="sa-body-text">{a.marketPosition}</p>
+            {/* 기업 개요 카드 */}
+            {(a.businessOverview || a.technology || a.marketPosition) && (
+              <div className="sa-info-grid">
+                {a.businessOverview && (
+                  <div className="sa-info-card">
+                    <div className="sa-info-card-header">
+                      <span className="sa-info-card-icon">🏢</span>
+                      <span className="sa-info-card-title">주요 비즈니스</span>
+                    </div>
+                    <p className="sa-info-card-text">{typeof a.businessOverview === 'string' ? a.businessOverview : JSON.stringify(a.businessOverview)}</p>
+                  </div>
+                )}
+                {a.technology && (
+                  <div className="sa-info-card">
+                    <div className="sa-info-card-header">
+                      <span className="sa-info-card-icon">⚙️</span>
+                      <span className="sa-info-card-title">핵심 기술 역량</span>
+                    </div>
+                    <p className="sa-info-card-text">{typeof a.technology === 'string' ? a.technology : JSON.stringify(a.technology)}</p>
+                  </div>
+                )}
+                {a.marketPosition && (
+                  <div className="sa-info-card">
+                    <div className="sa-info-card-header">
+                      <span className="sa-info-card-icon">📡</span>
+                      <span className="sa-info-card-title">시장에서의 평가</span>
+                    </div>
+                    <p className="sa-info-card-text">{typeof a.marketPosition === 'string' ? a.marketPosition : JSON.stringify(a.marketPosition)}</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -301,18 +356,23 @@ function StockAnalysis({ rec, onClose, onChartOpen, onSave }) {
             )}
 
             {/* AI가 선정한 이유 */}
-            <div className="sa-section">
-              <h3 className="sa-section-title">🤖 AI가 이 종목을 선정한 이유</h3>
-              <p className="sa-why-text">{a.whySelected}</p>
-            </div>
+            {a.whySelected && (
+              <div className="sa-why-box">
+                <div className="sa-why-header">
+                  <span>🤖</span>
+                  <span>AI가 이 종목을 선정한 이유</span>
+                </div>
+                <p className="sa-why-text">{a.whySelected}</p>
+              </div>
+            )}
 
             {/* 재무지표 분석 */}
             {a.metricAnalysis?.length > 0 && (
               <div className="sa-section">
                 <h3 className="sa-section-title">📊 주요 재무지표 분석</h3>
                 <div className="sa-metrics-list">
-                  {a.metricAnalysis.map((m, i) => (
-                    <MetricRow key={i} m={m} />
+                  {(Array.isArray(a.metricAnalysis) ? a.metricAnalysis.flat() : []).map((m, i) => (
+                    m && typeof m === 'object' && m.metric ? <MetricRow key={i} m={m} /> : null
                   ))}
                 </div>
               </div>
@@ -382,7 +442,7 @@ function StockAnalysis({ rec, onClose, onChartOpen, onSave }) {
                                       const isNeg = !isNaN(num) && num < 0;
                                       const isPos = !isNaN(num) && num > 0 && isRatio;
                                       return (
-                                        <td key={j} className={`fs-cell ${isNeg ? 'text-red' : ''} ${isPos ? 'text-green' : ''}`}>
+                                        <td key={j} className={`fs-cell ${isNeg ? 'text-blue' : ''} ${isPos ? 'text-red' : ''}`}>
                                           {v.value}
                                           {isRatio && v.value !== '-' ? (row.title.includes('EPS') || row.title.includes('BPS') ? '원' : /PER|PBR/.test(row.title) ? '배' : '%') : ''}
                                         </td>
@@ -486,27 +546,29 @@ function StockAnalysis({ rec, onClose, onChartOpen, onSave }) {
               </div>
             )}
 
-            {/* 투자 포인트 */}
-            {a.investmentPoints?.length > 0 && (
-              <div className="sa-section">
-                <h3 className="sa-section-title">🎯 핵심 투자 포인트</h3>
-                <ul className="sa-points-list">
-                  {a.investmentPoints.map((p, i) => (
-                    <li key={i}>{p}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* 주의사항 */}
-            {a.warnings?.length > 0 && (
-              <div className="sa-section sa-warn-section">
-                <h3 className="sa-section-title">⚠️ 주의할 점</h3>
-                <ul className="sa-warn-list">
-                  {a.warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
+            {/* 투자 포인트 & 주의사항 */}
+            {(a.investmentPoints?.length > 0 || a.warnings?.length > 0) && (
+              <div className="sa-two-col">
+                {a.investmentPoints?.length > 0 && (
+                  <div className="sa-col-card sa-col-points">
+                    <h3 className="sa-col-title">🎯 핵심 투자 포인트</h3>
+                    <ul>
+                      {a.investmentPoints.map((p, i) => (
+                        <li key={i}>{typeof p === 'string' ? p : JSON.stringify(p)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {a.warnings?.length > 0 && (
+                  <div className="sa-col-card sa-col-warns">
+                    <h3 className="sa-col-title">⚠️ 주의할 점</h3>
+                    <ul>
+                      {a.warnings.map((w, i) => (
+                        <li key={i}>{typeof w === 'string' ? w : JSON.stringify(w)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 

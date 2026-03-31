@@ -34,7 +34,7 @@ function StockTable({ title, stocks, color, onChartOpen }) {
                       )}
                     </td>
                     <td className="price">{isNaN(priceNum) ? s.price : priceNum.toLocaleString()}원</td>
-                    <td className={`rate ${isUp ? 'text-green' : 'text-red'}`}>{s.changeRate}</td>
+                    <td className={`rate ${isUp ? 'text-red' : 'text-blue'}`}>{s.changeRate}</td>
                     <td className="volume">{isNaN(volNum) ? s.volume : volNum.toLocaleString()}</td>
                   </tr>
                 );
